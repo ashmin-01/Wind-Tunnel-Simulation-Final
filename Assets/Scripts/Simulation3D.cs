@@ -79,7 +79,21 @@ public class Simulation3D : MonoBehaviour
     int numParticles;
     void Start()
     {
-        
+
+    // Use values from SharedData
+     timeScale = SharedData.timeScale;
+     fixedTimeStep = SharedData.fixedTimeStep;
+     iterationsPerFrame = SharedData.iterationsPerFrame;
+     gravity = SharedData.gravity;
+     collisionDamping = SharedData.collisionDamping; // This line already exists
+     smoothingRadius = SharedData.smoothingRadius;
+     targetDensity = SharedData.targetDensity;
+     pressureMultiplier = SharedData.pressureMultiplier;
+     nearPressureMultiplier = SharedData.nearPressureMultiplier;
+     viscosityStrength = SharedData.viscosityStrength;
+      windDirection = SharedData.windDirection;
+     windStrength = SharedData.windStrength;
+    
         Debug.Log("Controls: Space = Play/Pause, R = Reset");
         Debug.Log("Use transform tool in scene to scale/rotate simulation bounding box.");
 
@@ -127,7 +141,7 @@ public class Simulation3D : MonoBehaviour
        cubeMesh = CombineMeshes.CombineAllChildMeshes(model);
         storedVertexIndices = GetTrianglesVertexIndices(cubeMesh);
 
-        vector3MeshVertices = DelaunayTriangulationUtility.GetVerticesAfterTriangulate(model , positionsOfModel , scaleOfModel , 0.001f , rotationOfModel);
+        vector3MeshVertices = DelaunayTriangulationUtility.GetVerticesAfterTriangulate(model , positionsOfModel , scaleOfModel , rotationOfModel);
         float3MeshVertices = ConvertVector3ArrayToFloat3Array(vector3MeshVertices);
 
 
@@ -270,7 +284,7 @@ public class Simulation3D : MonoBehaviour
             isPaused = true;
             SetInitialBufferData(spawnData);
         }
-        
+       
     }
 
     private float3[] GetDataPositionsPoint(ComputeBuffer buffer, int count)

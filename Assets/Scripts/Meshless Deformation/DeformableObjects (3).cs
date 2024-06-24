@@ -28,10 +28,20 @@ public class DeformableObjects : MonoBehaviour
     private ComputeBuffer windForceBuffer;
 
     private float elapsedTime = 0f;
-    private bool isDeforming = true;
+    private bool isDeforming = false;
 
     void Start()
     {
+        
+
+        // Initialize from SharedData
+        windForce = SharedData.windForce;
+        alpha = SharedData.alpha;
+        timeStep = SharedData.timeStep;
+        forceThreshold = SharedData.forceThreshold;
+        massmin = SharedData.massMin;
+        massmax = SharedData.massMax;
+        deformationDuration = SharedData.deformationDuration;
         if (meshFilters == null || meshFilters.Count == 0)
         {
             Debug.LogError("No MeshFilters assigned.");
@@ -71,7 +81,8 @@ public class DeformableObjects : MonoBehaviour
             for (int i = 0; i < n; i++)
             {
                 masses[i] = (pointMasses != null) ? pointMasses[i] : Random.Range(massmin, massmax);
-                initialPositions[i] = meshFilter.transform.TransformPoint(vertices[i]);
+               // initialPositions[i] = meshFilter.transform.TransformPoint(vertices[i]);
+                initialPositions[i] = vertices[i];
                 velocities[i] = Vector3.zero;
                 positions[i] = initialPositions[i];
             }
@@ -100,38 +111,74 @@ public class DeformableObjects : MonoBehaviour
             massesBuffers.Add(massesBuffer);
         }
     }
-    void Update()
-{
-    if (isDeforming)
-    {
-        elapsedTime += Time.deltaTime;
 
-        if (elapsedTime >= deformationDuration)
+    void Update()
+    {
+        // Check for key press to start deformation
+        if (Input.GetKeyDown(KeyCode.D))
         {
-            isDeforming = false;
-            return;
+            StartDeformation();
         }
 
-        int kernelHandle = computeShader.FindKernel("CSMain");
-
-        for (int i = 0; i < positionsList.Count; i++)
+        if (isDeforming)
         {
-            // Ensure indices are valid
-            if (i >= positionsList.Count || i >= positionsBuffers.Count || i >= meshFilters.Count)
+            elapsedTime += Time.deltaTime;
+
+            if (elapsedTime >= deformationDuration)
             {
-                Debug.LogError("Index out of range.");
-                continue;
+                isDeforming = false;
+                return;
             }
 
-            computeShader.SetBuffer(kernelHandle, "positions", positionsBuffers[i]);
-            computeShader.SetBuffer(kernelHandle, "velocities", velocitiesBuffers[i]);
-            computeShader.SetBuffer(kernelHandle, "initialPositions", initialPositionsBuffers[i]);
-            computeShader.SetBuffer(kernelHandle, "masses", massesBuffers[i]);
+            int kernelHandle = computeShader.FindKernel("CSMain");
 
-            int threadGroups = Mathf.CeilToInt(positionsList[i].Length / 256.0f);
-            computeShader.Dispatch(kernelHandle, threadGroups, 1, 1);
+            for (int i = 0; i < positionsList.Count; i++)
+            {
+                // Ensure indices are valid
+                if (i >= positionsList.Count || i >= positionsBuffers.Count || i >= meshFilters.Count)
+                {
+                    Debug.LogError("Index out of range.");
+                    continue;
+                }
 
-            positionsBuffers[i].GetData(positionsList[i]);
+                computeShader.SetBuffer(kernelHandle, "positions", positionsBuffers[i]);
+                computeShader.SetBuffer(kernelHandle, "velocities", velocitiesBuffers[i]);
+                computeShader.SetBuffer(kernelHandle, "initialPositions", initialPositionsBuffers[i]);
+                computeShader.SetBuffer(kernelHandle, "masses", massesBuffers[i]);
+
+                int threadGroups = Mathf.CeilToInt(positionsList[i].Length / 256.0f);
+                computeShader.Dispatch(kernelHandle, threadGroups, 1, 1);
+
+                positionsBuffers[i].GetData(positionsList[i]);
+
+                var meshFilter = meshFilters[i];
+                if (meshFilter != null)
+                {
+                    var mesh = meshFilter.mesh;
+                    mesh.vertices = positionsList[i];
+                    mesh.RecalculateNormals();
+                }
+            }
+        }
+    }
+
+    public void StartDeformation()
+    {
+        elapsedTime = 0f;
+        isDeforming = true;
+    }
+
+    public void ResetDeformation()
+    {
+        isDeforming = false;
+        elapsedTime = 0f;
+
+        for (int i = 0; i < initialPositionsList.Count; i++)
+        {
+            positionsList[i] = (Vector3[])initialPositionsList[i].Clone();
+            velocitiesList[i] = new Vector3[initialPositionsList[i].Length];
+            positionsBuffers[i].SetData(positionsList[i]);
+            velocitiesBuffers[i].SetData(velocitiesList[i]);
 
             var meshFilter = meshFilters[i];
             if (meshFilter != null)
@@ -142,8 +189,6 @@ public class DeformableObjects : MonoBehaviour
             }
         }
     }
-}
-
 
     void OnDestroy()
     {

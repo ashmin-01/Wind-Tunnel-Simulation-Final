@@ -129,7 +129,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1082571165b11b34283feecaeb11784b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  windForce: {x: 0, y: 0, z: 5}
+  windForce: {x: 0, y: 0, z: 3}
   alpha: 0.5
   timeStep: 0.02
   forceThreshold: 1.5

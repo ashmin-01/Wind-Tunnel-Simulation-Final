@@ -6,74 +6,7 @@ using UnityEngine;
 
 public static class DelaunayTriangulationUtility
 {
-    public static Vector3[] SimplifyTriangles(Vector3[] triangles, float factor)
-    {
-        // Ensure the length of the array is a multiple of 3
-        if (triangles.Length % 3 != 0)
-        {
-            Debug.LogError("The length of the triangles array is not a multiple of 3.");
-            return triangles; // Return the original array to avoid further errors
-        }
-
-        Dictionary<Vector3, Vector3> vertexClusters = new Dictionary<Vector3, Vector3>();
-        List<Vector3> uniqueVertices = triangles.Distinct().ToList(); // Get unique vertices from the triangles
-        int targetVertexCount = Mathf.FloorToInt(uniqueVertices.Count * factor); // Calculate the target number of vertices after simplification
-
-        // Create a grid for clustering
-        float gridSize = Mathf.Sqrt(uniqueVertices.Count / (float)targetVertexCount);
-        foreach (var vertex in uniqueVertices)
-        {
-            // Calculate grid position for the vertex
-            Vector3 gridPos = new Vector3(
-                Mathf.Floor(vertex.x / gridSize),
-                Mathf.Floor(vertex.y / gridSize),
-                Mathf.Floor(vertex.z / gridSize)
-            );
-
-            // Add vertex to cluster or merge with existing cluster
-            if (!vertexClusters.ContainsKey(gridPos))
-            {
-                vertexClusters[gridPos] = vertex;
-            }
-            else
-            {
-                vertexClusters[gridPos] = (vertexClusters[gridPos] + vertex) / 2;
-            }
-        }
-
-        // Replace vertices in triangles with their cluster centroids
-        List<Vector3> simplifiedTriangles = new List<Vector3>();
-        for (int i = 0; i < triangles.Length; i += 3)
-        {
-            Vector3[] newTriangle = new Vector3[3];
-            for (int j = 0; j < 3; j++)
-            {
-                // Calculate grid position for the vertex
-                Vector3 gridPos = new Vector3(
-                    Mathf.Floor(triangles[i + j].x / gridSize),
-                    Mathf.Floor(triangles[i + j].y / gridSize),
-                    Mathf.Floor(triangles[i + j].z / gridSize)
-                );
-                newTriangle[j] = vertexClusters[gridPos]; // Replace vertex with cluster centroid
-            }
-
-            // Avoid adding degenerate triangles
-            if (newTriangle[0] != newTriangle[1] && newTriangle[1] != newTriangle[2] && newTriangle[2] != newTriangle[0])
-            {
-                simplifiedTriangles.AddRange(newTriangle);
-            }
-        }
-
-        if (simplifiedTriangles.Count == 0)
-        {
-            Debug.LogWarning("Simplification resulted in zero triangles, returning original triangles.");
-            return triangles; // Return the original triangles if simplification results in zero triangles
-        }
-
-        return simplifiedTriangles.ToArray(); // Return the simplified triangles
-    }
-
-    public static Vector3[] GetVerticesAfterTriangulate(GameObject model, Vector3 modelPosition, Vector3 modelScale, float simplificationFactor, Quaternion rotationOfModel)
+    public static Vector3[] GetVerticesAfterTriangulate(GameObject model, Vector3 modelPosition, Vector3 modelScale, Quaternion rotationOfModel)
     {
         Debug.Log("Delaunay Triangulation Example started.");
 
@@ -115,17 +48,30 @@ public static class DelaunayTriangulationUtility
 
         Debug.Log($"Number of cells created: {delaunayTriangulation.Cells.Count()}");
 
-        // Convert the triangulation result to a flat array of Vector3
-        List<Vector3> tempTriangles = new List<Vector3>();
+        // Collect the surface triangles
+        List<Vector3> surfaceTriangles = new List<Vector3>();
+        HashSet<MyFace> boundaryFaces = new HashSet<MyFace>();
+
         foreach (var cell in delaunayTriangulation.Cells)
         {
-            foreach (var vertex in cell.Vertices)
+            foreach (var face in GetCellFaces(cell))
             {
-                tempTriangles.Add(new Vector3((float)vertex.Position[0], (float)vertex.Position[1], (float)vertex.Position[2]));
+                if (!boundaryFaces.Add(face)) // If already added, it's an internal face
+                {
+                    boundaryFaces.Remove(face); // Remove from boundary set if already present
+                }
             }
         }
 
-        Vector3[] triangleVertices = tempTriangles.ToArray();
+        foreach (var face in boundaryFaces)
+        {
+            foreach (var vertex in face.Vertices)
+            {
+                surfaceTriangles.Add(new Vector3((float)vertex.Position[0], (float)vertex.Position[1], (float)vertex.Position[2]));
+            }
+        }
+
+        Vector3[] triangleVertices = surfaceTriangles.ToArray();
 
         // Ensure the length of the array is a multiple of 3
         if (triangleVertices.Length % 3 != 0)
@@ -135,16 +81,48 @@ public static class DelaunayTriangulationUtility
             Debug.LogWarning($"Trimmed the triangleVertices array to a multiple of 3. New length: {triangleVertices.Length}");
         }
 
-        Debug.Log($"Number of triangles before simplification: {triangleVertices.Length / 3}");
+        Debug.Log($"Number of surface triangles: {triangleVertices.Length / 3}");
         Debug.Log("Delaunay Triangulation completed.");
 
-        // Simplify the triangles using vertex clustering
-        Vector3[] simplifiedTriangles = SimplifyTriangles(triangleVertices, simplificationFactor);
+        // Create a new GameObject to visualize the surface mesh
+        GameObject newMeshObject = new GameObject("SurfaceMesh");
+        MeshFilter meshFilter = newMeshObject.AddComponent<MeshFilter>();
+        MeshRenderer meshRenderer = newMeshObject.AddComponent<MeshRenderer>();
 
-        Debug.Log("Simplification of triangles completed.");
-        Debug.Log($"Number of triangles after simplification: {simplifiedTriangles.Length / 3}");
+        // Assign a basic material (this requires you to have a material named "Default-Material" in your project)
+        Material material = Resources.Load<Material>("Default-Material");
+        if (material != null)
+        {
+            meshRenderer.material = material;
+        }
+        else
+        {
+            Debug.LogWarning("Default-Material not found. Please assign a material to the mesh manually.");
+        }
 
-        return simplifiedTriangles;
+        // Create a new mesh
+        Mesh surfaceMesh = new Mesh();
+
+        // Set the vertices
+        surfaceMesh.vertices = triangleVertices;
+
+        // Create an array for the triangles
+        int[] triangles = new int[triangleVertices.Length];
+        for (int i = 0; i < triangleVertices.Length; i++)
+        {
+            triangles[i] = i;
+        }
+
+        // Set the triangles
+        surfaceMesh.triangles = triangles;
+
+        // Recalculate normals for proper lighting
+        surfaceMesh.RecalculateNormals();
+
+        // Assign the new mesh to the MeshFilter
+        meshFilter.mesh = surfaceMesh;
+
+        return triangleVertices;
     }
 
     private static Mesh GetMeshFromModel(GameObject obj)
@@ -176,6 +154,15 @@ public static class DelaunayTriangulationUtility
         return null; // Return null if no mesh is found
     }
 
+    private static IEnumerable<MyFace> GetCellFaces(MyCell cell)
+    {
+        var vertices = cell.Vertices;
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            yield return new MyFace(vertices.Where((v, idx) => idx != i).ToArray());
+        }
+    }
+
     public class MyVertex : IVertex
     {
         public double[] Position { get; set; } // Position of the vertex in 3D space
@@ -187,4 +174,36 @@ public static class DelaunayTriangulationUtility
     }
 
     public class MyCell : TriangulationCell<MyVertex, MyCell> { }
+
+    public class MyFace
+    {
+        public IEnumerable<MyVertex> Vertices { get; }
+
+        public MyFace(IEnumerable<MyVertex> vertices)
+        {
+            Vertices = vertices;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is MyFace otherFace)
+            {
+                return Vertices.OrderBy(v => v.Position[0])
+                               .ThenBy(v => v.Position[1])
+                               .ThenBy(v => v.Position[2])
+                               .SequenceEqual(otherFace.Vertices.OrderBy(v => v.Position[0])
+                                                                .ThenBy(v => v.Position[1])
+                                                                .ThenBy(v => v.Position[2]));
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return Vertices.OrderBy(v => v.Position[0])
+                           .ThenBy(v => v.Position[1])
+                           .ThenBy(v => v.Position[2])
+                           .Aggregate(17, (current, vertex) => current * 23 + vertex.GetHashCode());
+        }
+    }
 }

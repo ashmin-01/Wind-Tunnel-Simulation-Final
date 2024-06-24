@@ -46,7 +46,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   windForce: {x: 0, y: 0, z: 5}
-  alpha: 0.5
+  alpha: 0.8
   timeStep: 0.02
   forceThreshold: 1.5
   massmin: 1
